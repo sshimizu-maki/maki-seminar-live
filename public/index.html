@@ -39,6 +39,7 @@ a{ color:var(--accent); }
 .topbar-meta{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; justify-content:flex-end; }
 .pill{ display:inline-flex; align-items:center; gap:5px; border:1px solid var(--line-strong); border-radius:999px; padding:3px 10px; font-size:12px; color:var(--ink-soft); white-space:nowrap; }
 .pill.role-presenter{ border-color:var(--accent); color:var(--accent); }
+.pill.number-pill{ border-color:var(--gold); color:var(--gold); font-weight:700; }
 .linklike{ background:none; border:none; color:var(--ink-soft); text-decoration:underline; cursor:pointer; font-size:12px; padding:2px; }
 .ruler{ display:flex; gap:6px; overflow-x:auto; padding-bottom:2px; }
 .tick{ flex:0 0 auto; border:1px solid var(--line-strong); background:var(--paper-raised); color:var(--ink-soft); border-radius:7px; padding:4px 9px; font-size:11px; cursor:pointer; }
@@ -177,6 +178,7 @@ footer.note{ color:var(--ink-faint); font-size:11.5px; text-align:center; paddin
       <h1>セミナーライブ帳票</h1>
     </div>
     <div class="topbar-meta">
+      <span class="pill hidden" id="numberPill"></span>
       <span class="pill" id="rolePill">―</span>
       <button class="linklike" id="switchRoleBtn">役割を変更</button>
     </div>
@@ -230,6 +232,14 @@ footer.note{ color:var(--ink-faint); font-size:11.5px; text-align:center; paddin
     <input type="text" id="codeInput" placeholder="合言葉" inputmode="numeric">
     <div class="error-text hidden" id="codeError">合言葉が違います。もう一度お試しください。</div>
     <button class="submit-btn" id="codeSubmitBtn">はじめる</button>
+  </section>
+
+  <section class="code-prompt hidden" id="numberPrompt">
+    <h2 style="font-size:1.3rem;">受付でお渡しした参加番号を入力してください</h2>
+    <p class="lede">登壇者が個別にご質問へ返信する際、どなたかを区別するために使います。</p>
+    <input type="text" id="numberInput" placeholder="例：42">
+    <div class="error-text hidden" id="numberError">参加番号を入力してください。</div>
+    <button class="submit-btn" id="numberSubmitBtn">決定</button>
   </section>
 
   <section id="presenterView" class="hidden"></section>
@@ -332,6 +342,7 @@ let track = sessionStorage.getItem(TRACK_KEY) || null;
 let presenterCode = sessionStorage.getItem(CODE_KEY) || null;
 let pid = localStorage.getItem(PID_KEY);
 if (!pid) { pid = 'p-' + Math.random().toString(36).slice(2,10) + Date.now().toString(36); localStorage.setItem(PID_KEY, pid); }
+let participantNumber = null;
 
 let currentIndex = 0;
 let autoFollow = true;
@@ -374,6 +385,7 @@ function callServer(fnName){
     }
     case 'submitSurvey': return apiPost('/api/survey', {pid:args[0], payload:args[1]});
     case 'setInstructorAnswer': return apiPost('/api/instructor-answer', {code:args[0], pid:args[1], pageId:args[2], text:args[3]});
+    case 'setNumber': return apiPost('/api/set-number', {pid:args[0], number:args[1]});
     default: return Promise.reject(new Error('unknown function: ' + fnName));
   }
 }
@@ -401,6 +413,13 @@ function setRolePill(){
   const p=document.getElementById('rolePill');
   p.textContent = role==='presenter' ? '登壇者モード' : '参加者モード';
   p.classList.toggle('role-presenter', role==='presenter');
+  const np=document.getElementById('numberPill');
+  if(role==='participant' && participantNumber){
+    np.textContent = '参加番号 ' + participantNumber;
+    np.classList.remove('hidden');
+  } else {
+    np.classList.add('hidden');
+  }
 }
 
 /* ---------------- boot / role flow ---------------- */
@@ -413,6 +432,8 @@ function boot(){
   });
   document.getElementById('codeSubmitBtn').addEventListener('click', submitCode);
   document.getElementById('codeInput').addEventListener('keydown', e=>{ if(e.key==='Enter') submitCode(); });
+  document.getElementById('numberSubmitBtn').addEventListener('click', submitNumber);
+  document.getElementById('numberInput').addEventListener('keydown', e=>{ if(e.key==='Enter') submitNumber(); });
   document.getElementById('switchRoleBtn').addEventListener('click', ()=>{
     sessionStorage.removeItem(ROLE_KEY); sessionStorage.removeItem(TRACK_KEY); sessionStorage.removeItem(CODE_KEY);
     location.reload();
@@ -426,11 +447,11 @@ function boot(){
     if(!presenterCode){ showScreen('codePrompt'); return; }
     enterPresenter();
   } else if(role==='participant'){
-    enterParticipant();
+    startParticipantFlow();
   }
 }
 function showScreen(id){
-  ['roleSelect','trackSelect','codePrompt','presenterView','participantView'].forEach(s=>{
+  ['roleSelect','trackSelect','codePrompt','numberPrompt','presenterView','participantView'].forEach(s=>{
     document.getElementById(s).classList.toggle('hidden', s!==id);
   });
 }
@@ -440,7 +461,36 @@ function chooseRole(r){
     if(!track){ showScreen('trackSelect'); return; }
     if(!presenterCode){ showScreen('codePrompt'); return; }
     enterPresenter();
-  } else { enterParticipant(); }
+  } else { startParticipantFlow(); }
+}
+async function startParticipantFlow(){
+  let mine = null;
+  try{ mine = await callServer('getMyAnswers', pid); }catch(e){ /* ignore; ask for the number anyway */ }
+  if(mine && mine.number){
+    participantNumber = mine.number;
+    enterParticipant(mine);
+  } else {
+    showScreen('numberPrompt');
+  }
+}
+async function submitNumber(){
+  const input = document.getElementById('numberInput');
+  const num = input.value.trim();
+  const errEl = document.getElementById('numberError');
+  errEl.classList.add('hidden');
+  if(!num){ errEl.textContent='参加番号を入力してください。'; errEl.classList.remove('hidden'); return; }
+  const btn = document.getElementById('numberSubmitBtn');
+  btn.disabled = true;
+  try{
+    await callServer('setNumber', pid, num);
+    participantNumber = num;
+    enterParticipant();
+  }catch(e){
+    errEl.textContent = (e && e.message) || '送信できませんでした。もう一度お試しください。';
+    errEl.classList.remove('hidden');
+  }finally{
+    btn.disabled = false;
+  }
 }
 function chooseTrack(t){
   track=t; sessionStorage.setItem(TRACK_KEY, t);
@@ -724,14 +774,15 @@ function openExport(){
 }
 
 /* ---------------- participant ---------------- */
-async function enterParticipant(){
+async function enterParticipant(mine){
   showScreen('participantView');
   setRolePill(); renderRuler();
   try{
-    const mine = await callServer('getMyAnswers', pid);
+    if(!mine) mine = await callServer('getMyAnswers', pid);
     myResponse.answers = mine.answers || {};
     myResponse.threads = mine.threads || {};
     if(mine.survey) myResponse.survey = mine.survey;
+    if(mine.number) participantNumber = mine.number;
   }catch(e){ showBanner('前回の回答を取得できませんでした（新規参加として続けます）。', true); }
 
   buildParticipantDOM();

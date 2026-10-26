@@ -11,18 +11,22 @@ function loadData() {
   try {
     return JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
   } catch (e) {
-    return { responses: {}, survey: {}, pidLabels: {}, pidCounter: 0, state: { page: 0, track: null } };
+    return { responses: {}, survey: {}, pidLabels: {}, pidCounter: 0, manualNumbers: {}, state: { page: 0, track: null } };
   }
 }
 let data = loadData();
 if (!data.pidLabels) data.pidLabels = {};
 if (!data.pidCounter) data.pidCounter = 0;
+if (!data.manualNumbers) data.manualNumbers = {};
 
 function save() {
   fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
 }
 
+// Prefer the participant number they entered (matches a number handed out at
+// reception) over the auto-incrementing join-order label.
 function labelFor(pid) {
+  if (data.manualNumbers[pid]) return '参加番号 ' + data.manualNumbers[pid];
   if (!data.pidLabels[pid]) {
     data.pidCounter += 1;
     data.pidLabels[pid] = data.pidCounter;
@@ -118,7 +122,17 @@ const server = http.createServer(async (req, res) => {
         answers: r.answers || {},
         threads: r.threads || {},
         survey: s,
+        number: data.manualNumbers[pid] || null,
       });
+    }
+
+    if (req.method === 'POST' && p === '/api/set-number') {
+      const body = await readBody(req);
+      const number = (body.number || '').toString().trim().slice(0, 20);
+      if (!body.pid || !number) return sendJson(res, 400, { error: '不正な送信です。' });
+      data.manualNumbers[body.pid] = number;
+      save();
+      return sendJson(res, 200, { ok: true });
     }
 
     if (req.method === 'POST' && p === '/api/answer') {
