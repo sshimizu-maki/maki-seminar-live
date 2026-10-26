@@ -31,8 +31,8 @@ function labelFor(pid) {
 }
 
 function ensureResponse(pid) {
-  if (!data.responses[pid]) data.responses[pid] = { answers: {}, questions: {}, questionAnswers: {} };
-  if (!data.responses[pid].questionAnswers) data.responses[pid].questionAnswers = {};
+  if (!data.responses[pid]) data.responses[pid] = { answers: {}, threads: {} };
+  if (!data.responses[pid].threads) data.responses[pid].threads = {};
   return data.responses[pid];
 }
 
@@ -55,15 +55,15 @@ function readBody(req) {
   });
 }
 
-// byPage[pageId].items: every participant who has an answer and/or a supplementary
-// question on that page, with their display label and any reply already given.
+// byPage[pageId].items: every participant who has a choice answer and/or a
+// question/reply thread on that page, with their display label.
 function computeTallies() {
   const byPage = {};
   for (const pid in data.responses) {
     const r = data.responses[pid];
     const pageIds = new Set([
       ...Object.keys(r.answers || {}),
-      ...Object.keys(r.questions || {}),
+      ...Object.keys(r.threads || {}),
     ]);
     pageIds.forEach(pageId => {
       if (!byPage[pageId]) byPage[pageId] = { items: [] };
@@ -71,8 +71,7 @@ function computeTallies() {
         pid,
         label: labelFor(pid),
         answer: r.answers ? r.answers[pageId] : undefined,
-        question: r.questions ? r.questions[pageId] : undefined,
-        reply: r.questionAnswers ? r.questionAnswers[pageId] : undefined,
+        thread: (r.threads && r.threads[pageId]) || [],
       });
     });
   }
@@ -113,12 +112,11 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === 'GET' && p === '/api/my') {
       const pid = u.searchParams.get('pid');
-      const r = data.responses[pid] || { answers: {}, questions: {}, questionAnswers: {} };
+      const r = data.responses[pid] || { answers: {}, threads: {} };
       const s = data.survey[pid] || null;
       return sendJson(res, 200, {
         answers: r.answers || {},
-        questions: r.questions || {},
-        questionAnswers: r.questionAnswers || {},
+        threads: r.threads || {},
         survey: s,
       });
     }
@@ -131,11 +129,19 @@ const server = http.createServer(async (req, res) => {
       return sendJson(res, 200, { ok: true });
     }
 
+    // Appends a participant message to that page's Q&A thread (a follow-up
+    // question after a reply pushes the thread back into "needs reply").
     if (req.method === 'POST' && p === '/api/question') {
       const body = await readBody(req);
-      if (!body.pid || !body.pageId) return sendJson(res, 400, { error: '不正な送信です。' });
-      ensureResponse(body.pid).questions[body.pageId] = body.text;
-      save();
+      const text = (body.text || '').trim();
+      if (!body.pid || !body.pageId || !text) return sendJson(res, 400, { error: '不正な送信です。' });
+      const r = ensureResponse(body.pid);
+      const thread = r.threads[body.pageId] || (r.threads[body.pageId] = []);
+      const last = thread[thread.length - 1];
+      if (!last || last.from !== 'participant' || last.text !== text) {
+        thread.push({ from: 'participant', text, at: Date.now() });
+        save();
+      }
       return sendJson(res, 200, { ok: true });
     }
 
@@ -156,12 +162,15 @@ const server = http.createServer(async (req, res) => {
       return sendJson(res, 200, { ok: true });
     }
 
-    // Presenter replies to ONE specific participant's question/answer on a page.
+    // Presenter replies to ONE specific participant's thread on a page.
     if (req.method === 'POST' && p === '/api/instructor-answer') {
       const body = await readBody(req);
       if (String(body.code) !== PRESENTER_CODE) return sendJson(res, 403, { error: '合言葉が違います。' });
-      if (!body.pid || !body.pageId) return sendJson(res, 400, { error: '不正な送信です。' });
-      ensureResponse(body.pid).questionAnswers[body.pageId] = body.text;
+      const text = (body.text || '').trim();
+      if (!body.pid || !body.pageId || !text) return sendJson(res, 400, { error: '不正な送信です。' });
+      const r = ensureResponse(body.pid);
+      const thread = r.threads[body.pageId] || (r.threads[body.pageId] = []);
+      thread.push({ from: 'presenter', text, at: Date.now() });
       save();
       return sendJson(res, 200, { ok: true });
     }

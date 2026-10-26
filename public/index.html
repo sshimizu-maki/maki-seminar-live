@@ -126,14 +126,24 @@ label.small{ font-size:12px; color:var(--ink-soft); display:block; margin-bottom
 footer.note{ color:var(--ink-faint); font-size:11.5px; text-align:center; padding-block:20px 8px; }
 
 .instructor-box{ display:flex; flex-direction:column; gap:6px; margin-top:4px; }
-.instructor-answer{ background:var(--paper); border:1px solid var(--gold); border-left:4px solid var(--gold); border-radius:8px; padding:8px 10px; }
-.instructor-answer label.small{ color:var(--gold); }
-.instructor-answer-text{ margin:4px 0 0; font-size:13.5px; white-space:pre-wrap; }
 
 .extra-question{ margin-top:2px; }
 .extra-question-toggle{ font-size:12px; }
 .extra-question-body{ margin-top:6px; display:flex; flex-direction:column; gap:6px; }
-.extra-question-body textarea{ min-height:50px; }
+
+.thread-composer{ display:flex; flex-direction:column; gap:6px; }
+.thread-composer textarea{ min-height:50px; }
+.thread-list{ display:flex; flex-direction:column; gap:6px; }
+.thread-list.hidden{ display:none; }
+.thread-msg{ border-radius:8px; padding:7px 10px; font-size:13.5px; }
+.thread-msg.from-participant{ background:var(--paper-raised); border:1px solid var(--line); }
+.thread-msg.from-presenter{ background:var(--paper); border:1px solid var(--gold); border-left:4px solid var(--gold); }
+.thread-msg .thread-who{ display:block; font-size:11px; color:var(--gold); font-weight:700; letter-spacing:.03em; margin-bottom:2px; }
+.thread-msg .thread-text{ margin:0; white-space:pre-wrap; }
+
+.qa-status{ font-size:11.5px; font-weight:600; }
+.qa-status.pending{ color:var(--danger); }
+.qa-status.saved{ color:var(--ok); }
 
 .qa-list{ display:flex; flex-direction:column; gap:8px; max-height:280px; overflow-y:auto; }
 .qa-item{ border:1px solid var(--line); border-radius:8px; padding:8px 10px; background:var(--paper); display:flex; flex-direction:column; gap:6px; }
@@ -320,7 +330,7 @@ if (!pid) { pid = 'p-' + Math.random().toString(36).slice(2,10) + Date.now().toS
 
 let currentIndex = 0;
 let autoFollow = true;
-let myResponse = { answers:{}, questions:{}, questionAnswers:{}, survey:{}, submittedAt:null };
+let myResponse = { answers:{}, threads:{}, survey:{}, submittedAt:null };
 let RESOLVED = PAGES, RESOLVED_P = PAGES;
 const cardRefs = {};
 const tallyRefs = {};
@@ -553,7 +563,9 @@ function renderTallies(data){
   RESOLVED.forEach(p=>{
     const ref=tallyRefs[p.id];
     const items = (data.byPage[p.id] && data.byPage[p.id].items) || [];
-    const answeredItems = items.filter(it => it.answer!==undefined && it.answer!==null && it.answer!=='');
+    const answeredItems = p.type==='choice'
+      ? items.filter(it => it.answer!==undefined && it.answer!==null && it.answer!=='')
+      : items.filter(it => (it.thread||[]).length > 0);
     ref.countEl.textContent = answeredItems.length;
     if(p.type==='choice'){
       p.choices.forEach((c,ci)=>{
@@ -564,8 +576,8 @@ function renderTallies(data){
       });
     }
     const qaItems = items
-      .map(it => ({ pid: it.pid, label: it.label, text: (p.type==='text' ? it.answer : it.question), reply: it.reply }))
-      .filter(it => it.text);
+      .map(it => ({ pid: it.pid, label: it.label, thread: it.thread || [] }))
+      .filter(it => it.thread.length > 0);
     renderQaList(ref.qaList, p.id, qaItems);
   });
   const submitted = data.submitted || [];
@@ -580,42 +592,78 @@ function renderTallies(data){
   topicsFeed.innerHTML = topics.length ? topics.slice(-30).reverse().map(g=>`<div class="qa-item"><div class="qa-text">${esc(g)}</div></div>`).join('') : '<span class="qa-empty">まだありません</span>';
 }
 
-/* Incrementally render per-question reply cards without wiping out in-progress typing. */
+/* Incrementally render per-participant thread cards. Existing cards are
+   updated in place (not just appended-once) so a participant's follow-up
+   question shows up — and flips the status back to "needs reply" — without
+   the presenter having to reload. */
 function renderQaList(container, pageId, items){
-  if(!container._renderedPids) container._renderedPids = new Set();
-  const newItems = items.filter(it => !container._renderedPids.has(it.pid));
-  if(container._renderedPids.size === 0 && newItems.length === 0) return; // still empty, leave the placeholder
-  if(newItems.length === 0) return;
+  if(!container._nodes) container._nodes = new Map();
+  if(container._nodes.size === 0 && items.length === 0) return; // still empty, leave the placeholder
+  if(items.length === 0) return;
   const emptyMsg = container.querySelector('.qa-empty');
   if(emptyMsg) emptyMsg.remove();
-  newItems.forEach(it=>{
-    container._renderedPids.add(it.pid);
-    container.appendChild(buildQaItem(pageId, it));
+  items.forEach(it=>{
+    let node = container._nodes.get(it.pid);
+    if(!node){
+      node = buildQaItem(pageId, it);
+      container._nodes.set(it.pid, node);
+      container.appendChild(node);
+    } else if(node._threadLen !== it.thread.length){
+      node._thread = it.thread;
+      node._threadLen = it.thread.length;
+      renderThreadInto(node.querySelector('.thread-list'), it.thread);
+      updateQaStatus(node, it.thread);
+    }
   });
+}
+function renderThreadInto(container, thread){
+  container.innerHTML = thread.map(m => `
+    <div class="thread-msg ${m.from==='presenter' ? 'from-presenter' : 'from-participant'}">
+      ${m.from==='presenter' ? '<span class="thread-who">登壇者からの返信</span>' : ''}
+      <p class="thread-text">${esc(m.text)}</p>
+    </div>`).join('');
+}
+function updateQaStatus(node, thread){
+  const statusEl = node.querySelector('.qa-status');
+  const last = thread[thread.length-1];
+  if(!last){ statusEl.textContent=''; statusEl.className='qa-status'; return; }
+  if(last.from==='presenter'){ statusEl.textContent='返信済み・参加者に表示中'; statusEl.className='qa-status saved'; }
+  else { statusEl.textContent='未返信'; statusEl.className='qa-status pending'; }
 }
 function buildQaItem(pageId, it){
   const node = el(`
     <div class="qa-item" data-pid="${esc(it.pid)}">
-      <div class="qa-label">${esc(it.label)}</div>
-      <div class="qa-text">${esc(it.text)}</div>
-      <textarea placeholder="この人への返信を入力…">${esc(it.reply||'')}</textarea>
+      <div class="row-end" style="justify-content:space-between;align-items:center;">
+        <div class="qa-label">${esc(it.label)}</div>
+        <span class="qa-status"></span>
+      </div>
+      <div class="thread-list"></div>
+      <textarea placeholder="この人への返信を入力…"></textarea>
       <div class="row-end" style="justify-content:space-between;align-items:center;">
         <span class="save-status"></span>
         <button type="button" class="submit-btn small-submit">返信する</button>
       </div>
     </div>`);
-  node.dataset.lastSaved = it.reply || '';
+  node._thread = it.thread;
+  node._threadLen = it.thread.length;
+  renderThreadInto(node.querySelector('.thread-list'), it.thread);
+  updateQaStatus(node, it.thread);
   const ta = node.querySelector('textarea');
   const statusEl = node.querySelector('.save-status');
   const btn = node.querySelector('.submit-btn');
-  if(it.reply){ statusEl.textContent='返信済み・参加者に表示中'; statusEl.className='save-status saved'; }
   btn.addEventListener('click', async ()=>{
+    const text = ta.value.trim();
+    if(!text) return;
     btn.disabled = true;
     statusEl.textContent='送信中…'; statusEl.className='save-status';
     try{
-      await callServer('setInstructorAnswer', presenterCode, it.pid, pageId, ta.value);
-      node.dataset.lastSaved = ta.value;
-      statusEl.textContent='返信済み・参加者に表示中'; statusEl.className='save-status saved';
+      await callServer('setInstructorAnswer', presenterCode, it.pid, pageId, text);
+      ta.value = '';
+      node._thread = node._thread.concat([{ from:'presenter', text, at:Date.now() }]);
+      node._threadLen = node._thread.length;
+      renderThreadInto(node.querySelector('.thread-list'), node._thread);
+      updateQaStatus(node, node._thread);
+      statusEl.textContent='送信しました'; statusEl.className='save-status saved';
     }catch(e){
       statusEl.textContent='送信できませんでした。もう一度お試しください'; statusEl.className='save-status error';
     }finally{
@@ -643,16 +691,19 @@ function openExport(){
   let any = false;
   RESOLVED.forEach(p=>{
     const ref = tallyRefs[p.id];
-    if(!ref || !ref.qaList) return;
-    const items = [...ref.qaList.children].filter(n=>n.classList && n.classList.contains('qa-item'));
-    const answered = items
-      .map(n=>({ text:n.querySelector('.qa-text').textContent, reply:n.dataset.lastSaved||'' }))
-      .filter(it=>it.reply && it.reply.trim());
-    if(!answered.length) return;
+    if(!ref || !ref.qaList || !ref.qaList._nodes) return;
+    const threads = [...ref.qaList._nodes.values()]
+      .map(n=>n._thread || [])
+      .filter(thread=>thread.some(m=>m.from==='presenter'));
+    if(!threads.length) return;
     any = true;
     html += `<h2>${esc(p.theme)}（${esc(p.no)}）</h2>`;
-    answered.forEach(it=>{
-      html += `<div class="export-qa"><div class="q">Q. ${esc(it.text)}</div><div class="a">A. ${esc(it.reply)}</div></div>`;
+    threads.forEach(thread=>{
+      html += '<div class="export-qa">';
+      thread.forEach(m=>{
+        html += `<div class="${m.from==='presenter' ? 'a' : 'q'}">${m.from==='presenter' ? 'A. ' : 'Q. '}${esc(m.text)}</div>`;
+      });
+      html += '</div>';
     });
   });
   if(!any) html += '<p style="color:var(--ink-faint);">まだ返信済みの質問がありません。</p>';
@@ -668,8 +719,7 @@ async function enterParticipant(){
   try{
     const mine = await callServer('getMyAnswers', pid);
     myResponse.answers = mine.answers || {};
-    myResponse.questions = mine.questions || {};
-    myResponse.questionAnswers = mine.questionAnswers || {};
+    myResponse.threads = mine.threads || {};
     if(mine.survey) myResponse.survey = mine.survey;
   }catch(e){ showBanner('前回の回答を取得できませんでした（新規参加として続けます）。', true); }
 
@@ -694,17 +744,20 @@ async function pollParticipant(){
   }catch(e){ /* ignore transient errors */ }
   try{
     const mine = await callServer('getMyAnswers', pid);
-    myResponse.questionAnswers = mine.questionAnswers || {};
+    myResponse.threads = mine.threads || {};
     applyReplies();
   }catch(e){ /* ignore */ }
 }
 function applyReplies(){
   Object.keys(cardRefs).forEach(id=>{
     const ref = cardRefs[id];
-    const text = myResponse.questionAnswers[id];
-    if(!text) return;
-    if(ref.replyBox && ref.replyTextEl){ ref.replyTextEl.textContent = text; ref.replyBox.classList.remove('hidden'); }
-    if(ref.extraReplyBox && ref.extraReplyTextEl){ ref.extraReplyTextEl.textContent = text; ref.extraReplyBox.classList.remove('hidden'); }
+    const thread = myResponse.threads[id] || [];
+    const box = ref.threadBox;
+    if(!box) return;
+    if(box._renderedLen === thread.length) return;
+    box._renderedLen = thread.length;
+    renderThreadInto(box, thread);
+    box.classList.toggle('hidden', thread.length===0);
   });
 }
 function updateCurrentFlags(){
@@ -751,7 +804,7 @@ function buildParticipantDOM(){
     const rowEnd=card.querySelector('.row-end');
     let choicesWrap=null;
     let submitBtn=null;
-    let replyBox=null, replyTextEl=null, extraReplyBox=null, extraReplyTextEl=null;
+    let threadBox=null;
     if(p.type==='choice'){
       choicesWrap=el('<div class="choices"></div>');
       p.choices.forEach((c,ci)=>{
@@ -771,30 +824,21 @@ function buildParticipantDOM(){
         choicesWrap.appendChild(b);
       });
       area.appendChild(choicesWrap);
-      const extraRefs = wireExtraQuestion(area, p.id);
-      extraReplyBox = extraRefs.replyBox; extraReplyTextEl = extraRefs.replyTextEl;
+      threadBox = wireExtraQuestion(area, p.id).threadBox;
       submitBtn = el('<button type="button" class="submit-btn small-submit">回答を送信する</button>');
       rowEnd.appendChild(submitBtn);
       wireSubmitButton(submitBtn, statusEl, ()=>myResponse.answers[p.id], p.id);
+      if(myResponse.answers[p.id]!==undefined && myResponse.answers[p.id]!==null && myResponse.answers[p.id]!==''){
+        statusEl.textContent='送信済み'; statusEl.className='save-status saved';
+      }
     } else {
-      const ta=el(`<textarea placeholder="ここに入力してください"></textarea>`);
-      ta.value = myResponse.answers[p.id] || '';
-      ta.addEventListener('input', ()=>{ myResponse.answers[p.id]=ta.value; statusEl.textContent='未送信（変更あり）'; statusEl.className='save-status pending'; });
-      area.appendChild(ta);
-      replyBox = el('<div class="instructor-answer hidden"><label class="small">講師からの回答</label><p class="instructor-answer-text"></p></div>');
-      area.appendChild(replyBox);
-      replyTextEl = replyBox.querySelector('.instructor-answer-text');
-      submitBtn = el('<button type="button" class="submit-btn small-submit">回答を送信する</button>');
-      rowEnd.appendChild(submitBtn);
-      wireSubmitButton(submitBtn, statusEl, ()=>myResponse.answers[p.id], p.id);
-    }
-    if(myResponse.answers[p.id]!==undefined && myResponse.answers[p.id]!==null && myResponse.answers[p.id]!==''){
-      statusEl.textContent='送信済み'; statusEl.className='save-status saved';
+      rowEnd.remove();
+      threadBox = wireThreadComposer(area, p.id, { submitLabel:'回答を送信する', placeholder:'ここに入力してください' }).threadBox;
     }
     cardRefs[p.id] = {
       el:card, flagEl:card.querySelector('.current-flag'), statusEl,
       noteEl:card.querySelector('.page-note'), questionEl:card.querySelector('.question'), choicesWrap,
-      replyBox, replyTextEl, extraReplyBox, extraReplyTextEl
+      threadBox
     };
   });
 
@@ -845,48 +889,65 @@ function wireSubmitButton(btn, statusEl, getValue, pageId){
     }
   });
 }
+/* Shared chat-style composer: shows the thread so far (if any) and a box to
+   send a NEW message. Used for the text-type page's main question and for
+   the choice-type page's optional "わからないこと" box. Sending a follow-up
+   after a reply naturally puts the thread back at "needs reply" on the
+   presenter's side, since it just looks at the last message's sender. */
+function wireThreadComposer(container, pageId, opts){
+  const submitLabel = (opts && opts.submitLabel) || '送信する';
+  const placeholder = (opts && opts.placeholder) || 'ここに入力してください';
+  const wrap = el(`
+    <div class="thread-composer">
+      <div class="thread-list hidden"></div>
+      <textarea placeholder="${esc(placeholder)}"></textarea>
+      <div class="row-end" style="justify-content:space-between;align-items:center;">
+        <span class="save-status"></span>
+        <button type="button" class="submit-btn small-submit">${esc(submitLabel)}</button>
+      </div>
+    </div>`);
+  container.appendChild(wrap);
+  const threadBox = wrap.querySelector('.thread-list');
+  const ta = wrap.querySelector('textarea');
+  const status = wrap.querySelector('.save-status');
+  const btn = wrap.querySelector('.submit-btn');
+  const existing = myResponse.threads[pageId] || [];
+  threadBox._renderedLen = existing.length;
+  if(existing.length){ renderThreadInto(threadBox, existing); threadBox.classList.remove('hidden'); }
+  btn.addEventListener('click', async ()=>{
+    const text = ta.value.trim();
+    if(!text) return;
+    btn.disabled = true;
+    status.textContent='送信中…'; status.className='save-status';
+    try{
+      await callServer('submitAnswer', pid, pageId, 'question', text);
+      ta.value = '';
+      const t = (myResponse.threads[pageId] = (myResponse.threads[pageId]||[]).concat([{from:'participant', text, at:Date.now()}]));
+      threadBox._renderedLen = t.length;
+      renderThreadInto(threadBox, t);
+      threadBox.classList.remove('hidden');
+      status.textContent='送信しました'; status.className='save-status saved';
+    }catch(e){
+      status.textContent='送信できませんでした。もう一度お試しください'; status.className='save-status error';
+    }finally{
+      btn.disabled = false;
+    }
+  });
+  return { threadBox };
+}
 function wireExtraQuestion(area, pageId){
   const wrap = el(`
     <div class="extra-question">
       <button type="button" class="linklike extra-question-toggle">＋ ご質問・わからないことを書く</button>
-      <div class="extra-question-body hidden">
-        <textarea placeholder="ここに質問を入力してください"></textarea>
-        <div class="row-end" style="justify-content:space-between;align-items:center;">
-          <span class="save-status"></span>
-          <button type="button" class="submit-btn small-submit">質問を送信する</button>
-        </div>
-        <div class="instructor-answer hidden">
-          <label class="small">講師からの回答</label>
-          <p class="instructor-answer-text"></p>
-        </div>
-      </div>
+      <div class="extra-question-body hidden"></div>
     </div>`);
   area.appendChild(wrap);
   const toggle = wrap.querySelector('.extra-question-toggle');
   const body = wrap.querySelector('.extra-question-body');
-  const ta = wrap.querySelector('textarea');
-  const qStatus = wrap.querySelector('.save-status');
-  const qSubmit = wrap.querySelector('.submit-btn');
-  const replyBox = wrap.querySelector('.instructor-answer');
-  const replyTextEl = replyBox.querySelector('.instructor-answer-text');
-  const existing = myResponse.questions[pageId] || '';
-  ta.value = existing;
-  if(existing){ body.classList.remove('hidden'); toggle.textContent='ご質問・わからないこと'; qStatus.textContent='送信済み'; qStatus.className='save-status saved'; }
+  const { threadBox } = wireThreadComposer(body, pageId, { submitLabel:'質問を送信する', placeholder:'ここに質問を入力してください' });
+  if((myResponse.threads[pageId]||[]).length){ body.classList.remove('hidden'); toggle.textContent='ご質問・わからないこと'; }
   toggle.addEventListener('click', ()=>{ body.classList.toggle('hidden'); });
-  ta.addEventListener('input', ()=>{ myResponse.questions[pageId]=ta.value; qStatus.textContent='未送信（変更あり）'; qStatus.className='save-status pending'; });
-  qSubmit.addEventListener('click', async ()=>{
-    qSubmit.disabled = true;
-    qStatus.textContent='送信中…'; qStatus.className='save-status';
-    try{
-      await callServer('submitAnswer', pid, pageId, 'question', ta.value);
-      qStatus.textContent='送信しました'; qStatus.className='save-status saved';
-    }catch(e){
-      qStatus.textContent='送信できませんでした。もう一度お試しください'; qStatus.className='save-status error';
-    }finally{
-      qSubmit.disabled = false;
-    }
-  });
-  return { replyBox, replyTextEl };
+  return { threadBox };
 }
 function buildSurveyCard(deck){
   const s = myResponse.survey || {};
