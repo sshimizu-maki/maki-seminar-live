@@ -80,6 +80,11 @@ textarea, input[type=text], input[type=email]{ width:100%; border:1px solid var(
 textarea{ min-height:66px; resize:vertical; }
 .row-end{ display:flex; justify-content:flex-end; }
 .save-status{ font-size:11.5px; color:var(--ink-faint); }
+.choice-status{ display:block; margin-top:4px; }
+.sync-status{ font-size:11.5px; color:var(--ink-faint); margin-top:2px; min-height:1.2em; }
+.sync-status.pending{ color:var(--gold); }
+.sync-status.saved{ color:var(--ok); }
+.sync-status.error{ color:var(--danger); font-weight:600; }
 .save-status.pending{ color:var(--gold); }
 .save-status.saved{ color:var(--ok); }
 .save-status.error{ color:var(--danger); }
@@ -475,7 +480,12 @@ async function pollTallies(){
 function setPage(i){
   currentIndex = Math.max(0, Math.min(TOTAL_STEPS-1, i));
   refreshPresenterNav(); updateRulerHighlight();
-  callServer('setState', presenterCode, currentIndex, track).catch(()=>{
+  const syncEl = document.getElementById('syncStatus');
+  if(syncEl){ syncEl.textContent='参加者の画面に反映中…'; syncEl.className='sync-status pending'; }
+  callServer('setState', presenterCode, currentIndex, track).then(()=>{
+    if(syncEl){ syncEl.textContent='参加者の画面に反映されました'; syncEl.className='sync-status saved'; }
+  }).catch(()=>{
+    if(syncEl){ syncEl.textContent='反映できませんでした。通信状況をご確認ください'; syncEl.className='sync-status error'; }
     showBanner('ページ送りを送信できませんでした。通信状況をご確認ください。', true);
   });
 }
@@ -487,6 +497,7 @@ function buildPresenterDOM(){
       <div>
         <div style="font-size:12px;color:var(--ink-soft);">現在表示中　・　${track==='migration'?'一般法人・移行法人セミナー':'公益法人セミナー'}</div>
         <div class="current-big" id="presCurrentLabel">-</div>
+        <div class="sync-status" id="syncStatus"></div>
       </div>
       <div class="nav-btns">
         <button class="nav-btn" id="prevBtn">← 前へ</button>
@@ -795,44 +806,39 @@ function buildParticipantDOM(){
           <p class="page-note">${esc(p.note)}</p>
           <p class="question">${esc(p.question)}</p>
           <div class="answer-area"></div>
-          <div class="row-end" style="justify-content:space-between;align-items:center;"><span class="save-status"></span></div>
         </div>
       </div>`);
     deck.appendChild(card);
     const area=card.querySelector('.answer-area');
-    const statusEl=card.querySelector('.save-status');
-    const rowEnd=card.querySelector('.row-end');
+    let statusEl=null;
     let choicesWrap=null;
-    let submitBtn=null;
     let threadBox=null;
     if(p.type==='choice'){
       choicesWrap=el('<div class="choices"></div>');
+      statusEl=el('<span class="save-status choice-status"></span>');
       p.choices.forEach((c,ci)=>{
         const b=el(`<button type="button" class="choice-btn">${esc(c)}</button>`);
         if(Number(myResponse.answers[p.id])===ci) b.classList.add('selected');
         b.addEventListener('click', async ()=>{
           myResponse.answers[p.id]=ci;
           choicesWrap.querySelectorAll('.choice-btn').forEach((x,xi)=>x.classList.toggle('selected', xi===ci));
-          statusEl.textContent='送信中…'; statusEl.className='save-status';
+          statusEl.textContent='送信中…'; statusEl.className='save-status choice-status';
           try{
             await callServer('submitAnswer', pid, p.id, 'answer', ci);
-            statusEl.textContent='送信しました'; statusEl.className='save-status saved';
+            statusEl.textContent='回答を送信しました'; statusEl.className='save-status choice-status saved';
           }catch(e){
-            statusEl.textContent='送信できませんでした。もう一度お試しください'; statusEl.className='save-status error';
+            statusEl.textContent='送信できませんでした。もう一度お試しください'; statusEl.className='save-status choice-status error';
           }
         });
         choicesWrap.appendChild(b);
       });
       area.appendChild(choicesWrap);
-      threadBox = wireExtraQuestion(area, p.id).threadBox;
-      submitBtn = el('<button type="button" class="submit-btn small-submit">回答を送信する</button>');
-      rowEnd.appendChild(submitBtn);
-      wireSubmitButton(submitBtn, statusEl, ()=>myResponse.answers[p.id], p.id);
+      area.appendChild(statusEl);
       if(myResponse.answers[p.id]!==undefined && myResponse.answers[p.id]!==null && myResponse.answers[p.id]!==''){
-        statusEl.textContent='送信済み'; statusEl.className='save-status saved';
+        statusEl.textContent='回答を送信しました'; statusEl.className='save-status choice-status saved';
       }
+      threadBox = wireExtraQuestion(area, p.id).threadBox;
     } else {
-      rowEnd.remove();
       threadBox = wireThreadComposer(area, p.id, { submitLabel:'回答を送信する', placeholder:'ここに入力してください' }).threadBox;
     }
     cardRefs[p.id] = {
@@ -862,12 +868,12 @@ function refreshTrackDependentCards(){
         b.addEventListener('click', async ()=>{
           myResponse.answers[p.id]=ci;
           ref.choicesWrap.querySelectorAll('.choice-btn').forEach((x,xi)=>x.classList.toggle('selected', xi===ci));
-          ref.statusEl.textContent='送信中…'; ref.statusEl.className='save-status';
+          ref.statusEl.textContent='送信中…'; ref.statusEl.className='save-status choice-status';
           try{
             await callServer('submitAnswer', pid, p.id, 'answer', ci);
-            ref.statusEl.textContent='送信しました'; ref.statusEl.className='save-status saved';
+            ref.statusEl.textContent='回答を送信しました'; ref.statusEl.className='save-status choice-status saved';
           }catch(e){
-            ref.statusEl.textContent='送信できませんでした。もう一度お試しください'; ref.statusEl.className='save-status error';
+            ref.statusEl.textContent='送信できませんでした。もう一度お試しください'; ref.statusEl.className='save-status choice-status error';
           }
         });
         ref.choicesWrap.appendChild(b);
