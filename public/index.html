@@ -1,0 +1,931 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>セミナーライブ帳票</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@500;700&family=Zen+Kaku+Gothic+New:wght@400;500;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+:root{
+  --paper:#eef0e6; --paper-raised:#f7f8f1; --line:#c7d2bc; --line-strong:#9fb08f;
+  --ink:#222b1f; --ink-soft:#5b6555; --ink-faint:#8b9480;
+  --accent:#b0472e; --accent-ink:#fbf4ee; --gold:#9c7a2e; --ok:#3c7363; --danger:#a3372c;
+  --shadow:0 1px 2px rgba(34,43,31,.1);
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --paper:#1b2118; --paper-raised:#232b1e; --line:#37442e; --line-strong:#49583c;
+    --ink:#e9e7da; --ink-soft:#aab296; --ink-faint:#7c8670;
+    --accent:#e2835c; --accent-ink:#201a14; --gold:#d8b369; --ok:#63b198; --danger:#e08b7a;
+    --shadow:0 1px 4px rgba(0,0,0,.45);
+  }
+}
+*{box-sizing:border-box;}
+html,body{ margin:0; padding:0; }
+body{
+  background:var(--paper); color:var(--ink);
+  font-family:'Zen Kaku Gothic New','Hiragino Kaku Gothic ProN','Noto Sans JP',sans-serif;
+  padding-inline:16px; max-width:680px; margin:0 auto;
+  line-height:1.6; font-size:15px;
+}
+h1,h2,h3{ font-family:'Shippori Mincho','Hiragino Mincho ProN',serif; margin:0; }
+.mono{ font-family:'JetBrains Mono',ui-monospace,monospace; font-variant-numeric:tabular-nums; }
+button{ font-family:inherit; }
+a{ color:var(--accent); }
+
+.topbar{ position:sticky; top:0; z-index:5; background:var(--paper); padding-block:12px 10px; border-bottom:1px solid var(--line); display:flex; flex-direction:column; gap:10px; }
+.topbar-row{ display:flex; align-items:center; justify-content:space-between; gap:10px; }
+.brand .eyebrow{ font-size:11px; letter-spacing:.08em; color:var(--ink-faint); }
+.brand h1{ font-size:1.15rem; font-weight:700; }
+.topbar-meta{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; justify-content:flex-end; }
+.pill{ display:inline-flex; align-items:center; gap:5px; border:1px solid var(--line-strong); border-radius:999px; padding:3px 10px; font-size:12px; color:var(--ink-soft); white-space:nowrap; }
+.pill.role-presenter{ border-color:var(--accent); color:var(--accent); }
+.linklike{ background:none; border:none; color:var(--ink-soft); text-decoration:underline; cursor:pointer; font-size:12px; padding:2px; }
+.ruler{ display:flex; gap:6px; overflow-x:auto; padding-bottom:2px; }
+.tick{ flex:0 0 auto; border:1px solid var(--line-strong); background:var(--paper-raised); color:var(--ink-soft); border-radius:7px; padding:4px 9px; font-size:11px; cursor:pointer; }
+.tick.current{ background:var(--accent); border-color:var(--accent); color:var(--accent-ink); font-weight:600; }
+.tick.done{ color:var(--ink-faint); }
+
+.banner{ background:var(--paper-raised); border:1px solid var(--line-strong); border-left:4px solid var(--gold); border-radius:8px; padding:10px 12px; font-size:13px; color:var(--ink-soft); margin-block:12px; }
+.banner.danger{ border-left-color:var(--danger); }
+
+main{ padding-block:16px 48px; }
+.hidden{ display:none !important; }
+
+.role-select{ padding-block:36px 24px; display:flex; flex-direction:column; gap:22px; }
+.role-select .lede{ color:var(--ink-soft); max-width:46ch; }
+.role-cards{ display:grid; gap:14px; }
+.role-card{ text-align:left; background:var(--paper-raised); border:1px solid var(--line-strong); border-radius:12px; padding:18px; cursor:pointer; box-shadow:var(--shadow); display:flex; flex-direction:column; gap:6px; }
+.role-card .tag{ font-size:11px; letter-spacing:.08em; color:var(--gold); }
+.role-card h3{ font-size:1.05rem; }
+.role-card p{ margin:0; color:var(--ink-soft); font-size:13.5px; }
+
+.code-prompt{ padding-block:36px 24px; display:flex; flex-direction:column; gap:14px; max-width:420px; }
+.code-prompt input{ font-size:18px; padding:10px 12px; text-align:center; letter-spacing:.1em; }
+
+.deck{ display:flex; flex-direction:column; gap:14px; }
+.page-card{ display:grid; grid-template-columns:52px 1fr; background:var(--paper-raised); border:1px solid var(--line); border-radius:11px; overflow:hidden; box-shadow:var(--shadow); }
+.page-card.current{ border-color:var(--accent); }
+.folio{ background:var(--paper); border-right:1px solid var(--line); display:flex; align-items:center; justify-content:center; writing-mode:vertical-rl; letter-spacing:.1em; color:var(--ink-faint); font-size:12px; padding-block:10px; }
+.page-card.current .folio{ background:var(--accent); color:var(--accent-ink); border-color:var(--accent); }
+.page-body{ padding:14px 16px; display:flex; flex-direction:column; gap:10px; }
+.page-head{ display:flex; align-items:baseline; justify-content:space-between; gap:10px; }
+.page-head h3{ font-size:1rem; }
+.current-flag{ font-size:11px; color:var(--accent); font-weight:600; white-space:nowrap; }
+.page-note{ color:var(--ink-soft); font-size:13px; margin:0; }
+.question{ font-weight:500; font-size:14px; }
+.choices{ display:flex; flex-direction:column; gap:7px; }
+.choice-btn{ text-align:left; border:1px solid var(--line-strong); background:transparent; color:var(--ink); border-radius:8px; padding:9px 12px; font-size:13.5px; cursor:pointer; }
+.choice-btn.selected{ background:var(--accent); border-color:var(--accent); color:var(--accent-ink); font-weight:600; }
+textarea, input[type=text], input[type=email]{ width:100%; border:1px solid var(--line-strong); background:var(--paper); color:var(--ink); border-radius:8px; padding:9px 11px; font-size:13.5px; font-family:inherit; }
+textarea{ min-height:66px; resize:vertical; }
+.row-end{ display:flex; justify-content:flex-end; }
+.save-status{ font-size:11.5px; color:var(--ink-faint); }
+.save-status.pending{ color:var(--gold); }
+.save-status.saved{ color:var(--ok); }
+.save-status.error{ color:var(--danger); }
+
+.survey-card{ border-color:var(--gold); }
+.survey-card .folio{ color:var(--gold); }
+.survey-card.current .folio{ background:var(--gold); color:var(--accent-ink); }
+.incentive{ background:var(--paper); border:1px dashed var(--gold); border-radius:8px; padding:8px 10px; font-size:12.5px; color:var(--ink-soft); }
+.stars{ display:flex; gap:6px; }
+.star-btn{ width:36px; height:36px; border-radius:8px; border:1px solid var(--line-strong); background:transparent; color:var(--ink); font-family:'JetBrains Mono',monospace; cursor:pointer; }
+.star-btn.selected{ background:var(--gold); border-color:var(--gold); color:var(--accent-ink); font-weight:700; }
+.field-grid{ display:grid; gap:10px; }
+label.small{ font-size:12px; color:var(--ink-soft); display:block; margin-bottom:3px; }
+.submit-btn{ background:var(--accent); color:var(--accent-ink); border:none; border-radius:8px; padding:11px 18px; font-size:14px; font-weight:700; cursor:pointer; align-self:flex-start; }
+.submit-btn.small-submit{ padding:7px 14px; font-size:13px; }
+.submit-btn:disabled{ opacity:.5; cursor:default; }
+.error-text{ color:var(--danger); font-size:12px; }
+.done-note{ background:var(--paper); border:1px solid var(--ok); border-radius:8px; padding:12px; font-size:13.5px; }
+.done-note strong{ color:var(--ok); }
+
+.presenter-head{ display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:14px; }
+.presenter-head .current-big{ font-family:'JetBrains Mono',monospace; font-size:1.6rem; }
+.nav-btns{ display:flex; gap:8px; }
+.nav-btn{ border:1px solid var(--line-strong); background:var(--paper-raised); color:var(--ink); border-radius:8px; padding:9px 16px; font-size:14px; cursor:pointer; }
+.nav-btn.primary{ background:var(--accent); border-color:var(--accent); color:var(--accent-ink); font-weight:700; }
+.nav-btn:disabled{ opacity:.4; cursor:default; }
+.tally-row{ display:flex; align-items:center; gap:8px; font-size:12.5px; margin-block:4px; }
+.tally-label{ width:46%; color:var(--ink-soft); flex-shrink:0; }
+.tally-track{ flex:1; height:9px; background:var(--line); border-radius:999px; overflow:hidden; }
+.tally-fill{ height:100%; background:var(--accent); width:0%; transition:width .3s; }
+.tally-count{ width:34px; text-align:right; flex-shrink:0; }
+.stat-row{ display:flex; gap:14px; flex-wrap:wrap; margin-top:6px; }
+.stat{ background:var(--paper); border:1px solid var(--line); border-radius:8px; padding:8px 12px; }
+.stat .n{ font-family:'JetBrains Mono',monospace; font-size:1.2rem; display:block; }
+.stat .l{ font-size:11px; color:var(--ink-soft); }
+.toggle-row{ display:flex; align-items:center; gap:8px; font-size:12.5px; color:var(--ink-soft); margin-bottom:14px; }
+.switch{ position:relative; width:34px; height:19px; flex-shrink:0; }
+.switch input{ opacity:0; width:0; height:0; }
+.slider{ position:absolute; inset:0; background:var(--line-strong); border-radius:999px; cursor:pointer; transition:.2s; }
+.slider::before{ content:""; position:absolute; width:15px; height:15px; left:2px; top:2px; background:var(--paper-raised); border-radius:50%; transition:.2s; }
+.switch input:checked + .slider{ background:var(--accent); }
+.switch input:checked + .slider::before{ transform:translateX(15px); }
+.jump-fab{ position:fixed; bottom:18px; right:18px; background:var(--accent); color:var(--accent-ink); border:none; border-radius:999px; padding:10px 16px; font-size:13px; font-weight:600; box-shadow:var(--shadow); cursor:pointer; }
+footer.note{ color:var(--ink-faint); font-size:11.5px; text-align:center; padding-block:20px 8px; }
+
+.instructor-box{ display:flex; flex-direction:column; gap:6px; margin-top:4px; }
+.instructor-answer{ background:var(--paper); border:1px solid var(--gold); border-left:4px solid var(--gold); border-radius:8px; padding:8px 10px; }
+.instructor-answer label.small{ color:var(--gold); }
+.instructor-answer-text{ margin:4px 0 0; font-size:13.5px; white-space:pre-wrap; }
+
+.extra-question{ margin-top:2px; }
+.extra-question-toggle{ font-size:12px; }
+.extra-question-body{ margin-top:6px; display:flex; flex-direction:column; gap:6px; }
+.extra-question-body textarea{ min-height:50px; }
+
+.qa-list{ display:flex; flex-direction:column; gap:8px; max-height:280px; overflow-y:auto; }
+.qa-item{ border:1px solid var(--line); border-radius:8px; padding:8px 10px; background:var(--paper); display:flex; flex-direction:column; gap:6px; }
+.qa-item .qa-label{ font-size:11px; color:var(--gold); font-weight:700; letter-spacing:.03em; }
+.qa-item .qa-text{ font-size:13.5px; }
+.qa-item textarea{ min-height:44px; }
+.qa-empty{ color:var(--ink-faint); font-style:italic; font-size:13px; }
+
+.export-overlay{ position:fixed; inset:0; background:var(--paper); z-index:50; overflow-y:auto; padding:20px 16px; }
+.export-top{ display:flex; justify-content:space-between; align-items:center; gap:10px; margin-bottom:18px; max-width:640px; margin-inline:auto; }
+.export-top h2{ font-size:1.2rem; }
+.export-body{ max-width:640px; margin:0 auto; }
+.export-body h2{ margin-top:26px; font-size:1.05rem; border-bottom:1px solid var(--line-strong); padding-bottom:6px; }
+.export-qa{ border-bottom:1px dotted var(--line); padding-block:10px; }
+.export-qa .q{ font-weight:700; }
+.export-qa .a{ color:var(--ink-soft); margin-top:4px; white-space:pre-wrap; }
+@media print { .topbar, .export-top, footer.note { display:none !important; } .export-overlay { position:static; } }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-row">
+    <div class="brand">
+      <span class="eyebrow">満喜株式会社 ／ 新基準移行までの準備について</span>
+      <h1>セミナーライブ帳票</h1>
+    </div>
+    <div class="topbar-meta">
+      <span class="pill" id="rolePill">―</span>
+      <button class="linklike" id="switchRoleBtn">役割を変更</button>
+    </div>
+  </div>
+  <div class="ruler" id="ruler" hidden></div>
+</div>
+
+<main>
+  <div id="banner-area"></div>
+
+  <section class="role-select" id="roleSelect">
+    <div>
+      <h2 style="font-size:1.4rem;">今日はどちらの役割ですか</h2>
+      <p class="lede">登壇者が進行すると、参加者の画面は自動でそのページへ切り替わります。参加者はいつでも前のページに戻って入力できます。アンケートも同じ画面の最後にまとまっています。アカウント登録は不要です。</p>
+    </div>
+    <div class="role-cards">
+      <button class="role-card" data-role="presenter">
+        <span class="tag">登壇者</span>
+        <h3>登壇者としてはじめる</h3>
+        <p>進行ページの切り替え、回答・質問への個別返信、アンケートの集計をリアルタイムで確認します（合言葉が必要です）。</p>
+      </button>
+      <button class="role-card" data-role="participant">
+        <span class="tag">参加者</span>
+        <h3>参加者として参加する</h3>
+        <p>登壇の進行に合わせて設問が表示されます。わからないことの記入・アンケート回答もここから。</p>
+      </button>
+    </div>
+  </section>
+
+  <section class="role-select hidden" id="trackSelect">
+    <div>
+      <h2 style="font-size:1.4rem;">本日のセミナーはどちらの回ですか</h2>
+      <p class="lede">対象法人によって一部ページの設問が変わります（例：収支予算書は移行法人・その他法人では任意です）。</p>
+    </div>
+    <div class="role-cards">
+      <button class="role-card" data-track="public">
+        <span class="tag">公益法人向け</span>
+        <h3>公益法人セミナー</h3>
+        <p>公益社団法人・公益財団法人向けの回です。</p>
+      </button>
+      <button class="role-card" data-track="migration">
+        <span class="tag">一般法人・移行法人向け</span>
+        <h3>一般法人・移行法人セミナー</h3>
+        <p>移行法人、その他の一般法人・任意団体向けの回です。</p>
+      </button>
+    </div>
+  </section>
+
+  <section class="code-prompt hidden" id="codePrompt">
+    <h2 style="font-size:1.3rem;">登壇者用の合言葉を入力してください</h2>
+    <input type="text" id="codeInput" placeholder="合言葉" inputmode="numeric">
+    <div class="error-text hidden" id="codeError">合言葉が違います。もう一度お試しください。</div>
+    <button class="submit-btn" id="codeSubmitBtn">はじめる</button>
+  </section>
+
+  <section id="presenterView" class="hidden"></section>
+  <section id="participantView" class="hidden"></section>
+</main>
+<footer class="note">満喜株式会社</footer>
+<button class="jump-fab hidden" id="jumpFab">現在のページへ戻る ↑</button>
+
+<script>
+const PAGES = [
+  { id:'p3', no:'p.3', theme:'「変わるもの」と「変わらないもの」',
+    note:'セミナー冒頭で講師は、平成20年基準の「わかりにくさ」の主な原因を2つ挙げ、令和6年基準はその2つに正面から手を入れた、と説明していました。',
+    type:'choice',
+    question:'その2つの原因のうち、基本財産・特定資産の区分ともう一つは何でしたか？',
+    choices:['指定正味財産から一般正味財産への振替処理','固定資産の減価償却方法','収支予算書の様式'] },
+  { id:'p7', no:'p.7', theme:'基本財産・特定資産の解体',
+    note:'基本財産・特定資産という区分表示は貸借対照表の本表から消え、資産の性質（現金預金・有形固定資産など）で並び替わります。講師は「普通預金は基本財産でも特定資産でも流動資産になる」「一年基準は毎期洗い替えが必要」という2点を特に強調していました。',
+    type:'choice',
+    question:'本冊の設例では、科目を並べ替えただけで、流動資産の「現金預金」が1億6,568万5千円から3億7,568万5千円へ、2億1,000万円も増えて見えます。この増加の実態は何ですか？',
+    choices:['実際に自由に使える運転資金が増えた','表示が変わっただけで、運転資金が増えたわけではない','特定資産が消滅し、全額が運転資金になった'] },
+  { id:'p21', no:'p.21', theme:'活動計算書科目（旧・正味財産増減計算書）',
+    note:'振替処理が廃止されると、受け入れた補助金・寄付金を2回収益計上していたのが1回になり、法人の中身は何も変わっていないのに経常収益の数字だけが見かけ上減ります（本冊の設例では4億3,070万円→4億1,440万円、1,630万円の減少）。',
+    type:'text',
+    question:'「指定正味財産から一般正味財産への振替処理」が廃止されることについて、わからないこと・気になる点をご記入ください。' },
+  { id:'p29', no:'p.29', theme:'収支計算書「資金の範囲」の再定義',
+    note:'収支計算書の作成は義務ではありませんが、多くの法人が実務で作成しています。令和6年基準では資金の範囲そのものは変えず、その“定義の書き方”を科目名ではなく資産の性格で書き直す必要があります。',
+    type:'choice',
+    question:'収支計算書の「資金の範囲」の定義を、これまでどおり科目名（現金預金など）だけで書いていた場合、令和6年基準移行後に何が起きますか？',
+    choices:['特に何も変わらない','基本財産・特定資産に区分されていた預金まで資金に含まれ、残高が実態より大きく見える','逆に資金の範囲が狭くなり、残高が実態より小さく見える'] },
+  { id:'p32', no:'p.32', theme:'収支予算書に求められる水準',
+    note:'収支予算書に決まった様式はなく、施行規則第48条の必須事項を満たせば自由です。講師は「1枚の表で全部満たす必要はない」「前期比較は規則でもガイドラインでも求められていない」とも説明していました。公益認定等ガイドライン（令和8年7月最終改訂）は、会計区分別・費用の形態別区分などを「望ましい」水準として求めています。',
+    type:'choice',
+    question:'貴法人の収支予算書は、現在どちらに近いですか？',
+    choices:['前期比較を重視した様式にしたい','会計区分・事業区分ごとの内訳を重視したい','どちらも必要だが、様式の決め方がわからない'],
+    variants:{ migration:{
+      note:'移行法人・その他の法人・任意団体には、収支予算書の作成義務はありません（任意）。作成する場合は、公益法人と同じ水準を目安にできます。',
+      type:'choice',
+      question:'貴法人では収支予算書を作成していますか（任意）？',
+      choices:['すでに作成している','今後作成を検討したい','作成の予定はない']
+    } } },
+  { id:'p41', no:'p.41', theme:'経理規程の改定',
+    note:'科目体系・財務諸表名称・会計処理の変更に合わせ、経理規程の条文を見直します。講師が「今日のところ、とても重要」と強調していたのは、基本財産・特定資産が貸借対照表の科目から消えても、理事会決議による指定・管理・取崩しの手続きまでは無くならない、という点でした。',
+    type:'choice',
+    question:'経理規程の改定で、貴法人が特に対応に迷いそうな項目はどれですか？',
+    choices:['基本財産・特定資産の台帳をどう残すか','資金の範囲の再定義','収支予算書の様式の規程への反映','とくに迷いはない'] },
+  { id:'p46', no:'p.46', theme:'移行初年度の手続き',
+    note:'移行初年度は貸借対照表の残高を新科目体系に組み替えますが、講師が繰り返し強調していたのは「資産・負債・純資産の合計額は変わらない」という点です。新旧の対応関係を1枚の組み替え表にまとめ、検算することが欠かせません。',
+    type:'choice',
+    question:'移行初年度の期首残高の組み替えについて、会計ソフトメーカーへの確認状況はいかがですか？',
+    choices:['すでに確認済み','これから確認する予定','会計ソフト自体がまだ決まっていない'] },
+];
+const SURVEY_INDEX = PAGES.length;
+const TOTAL_STEPS = PAGES.length + 1;
+const PID_KEY = 'maki-seminar-local-pid';
+const ROLE_KEY = 'maki-seminar-local-role';
+const TRACK_KEY = 'maki-seminar-local-track';
+const CODE_KEY = 'maki-seminar-local-code';
+const POLL_MS = 4000;
+
+let role = sessionStorage.getItem(ROLE_KEY) || null;
+let track = sessionStorage.getItem(TRACK_KEY) || null;
+let presenterCode = sessionStorage.getItem(CODE_KEY) || null;
+let pid = localStorage.getItem(PID_KEY);
+if (!pid) { pid = 'p-' + Math.random().toString(36).slice(2,10) + Date.now().toString(36); localStorage.setItem(PID_KEY, pid); }
+
+let currentIndex = 0;
+let autoFollow = true;
+let myResponse = { answers:{}, questions:{}, questionAnswers:{}, survey:{}, submittedAt:null };
+let RESOLVED = PAGES, RESOLVED_P = PAGES;
+const cardRefs = {};
+const tallyRefs = {};
+let pollTimer = null;
+
+function el(html){ const t=document.createElement('template'); t.innerHTML=html.trim(); return t.content.firstElementChild; }
+function esc(s){ return (s||'').toString().replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function stepLabel(i){ return i===SURVEY_INDEX ? 'アンケート' : PAGES[i].no; }
+function resolvePage(p, trackVal){
+  const v = (trackVal && p.variants && p.variants[trackVal]) ? p.variants[trackVal] : null;
+  return v ? Object.assign({}, p, v) : p;
+}
+function showBanner(msg, danger){
+  const area=document.getElementById('banner-area');
+  area.appendChild(el(`<div class="banner${danger?' danger':''}">${esc(msg)}</div>`));
+}
+
+function apiGet(path){
+  return fetch(path).then(r => r.json().then(j => { if(!r.ok) throw new Error(j.error || ('HTTP '+r.status)); return j; }));
+}
+function apiPost(path, body){
+  return fetch(path, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)})
+    .then(r => r.json().then(j => { if(!r.ok) throw new Error(j.error || ('HTTP '+r.status)); return j; }));
+}
+function callServer(fnName){
+  const args = Array.prototype.slice.call(arguments, 1);
+  switch(fnName){
+    case 'getPublicState': return apiGet('/api/state');
+    case 'setState': return apiPost('/api/state', {code:args[0], page:args[1], track:args[2]});
+    case 'getTallies': return apiGet('/api/tallies');
+    case 'getMyAnswers': return apiGet('/api/my?pid=' + encodeURIComponent(args[0]));
+    case 'submitAnswer': {
+      const pidArg = args[0], pageId = args[1], kind = args[2], value = args[3];
+      if (kind === 'question') return apiPost('/api/question', {pid:pidArg, pageId:pageId, text:value});
+      return apiPost('/api/answer', {pid:pidArg, pageId:pageId, value:value});
+    }
+    case 'submitSurvey': return apiPost('/api/survey', {pid:args[0], payload:args[1]});
+    case 'setInstructorAnswer': return apiPost('/api/instructor-answer', {code:args[0], pid:args[1], pageId:args[2], text:args[3]});
+    default: return Promise.reject(new Error('unknown function: ' + fnName));
+  }
+}
+
+/* ---------------- ruler ---------------- */
+function renderRuler(){
+  const r=document.getElementById('ruler');
+  r.hidden=false; r.innerHTML='';
+  for(let i=0;i<TOTAL_STEPS;i++){
+    const t=el(`<button class="tick" type="button">${esc(stepLabel(i))}</button>`);
+    if(i===currentIndex) t.classList.add('current');
+    else if(i<currentIndex) t.classList.add('done');
+    t.addEventListener('click', ()=>{
+      if(role==='presenter') setPage(i);
+      else { autoFollow=false; const af=document.getElementById('autoFollowToggle'); if(af) af.checked=false; scrollToStep(i); }
+    });
+    r.appendChild(t);
+  }
+}
+function updateRulerHighlight(){
+  const r=document.getElementById('ruler'); if(!r) return;
+  [...r.children].forEach((t,i)=>{ t.classList.toggle('current', i===currentIndex); t.classList.toggle('done', i<currentIndex); });
+}
+function setRolePill(){
+  const p=document.getElementById('rolePill');
+  p.textContent = role==='presenter' ? '登壇者モード' : '参加者モード';
+  p.classList.toggle('role-presenter', role==='presenter');
+}
+
+/* ---------------- boot / role flow ---------------- */
+function boot(){
+  document.querySelectorAll('#roleSelect .role-card').forEach(c=>{
+    c.addEventListener('click', ()=> chooseRole(c.dataset.role));
+  });
+  document.querySelectorAll('#trackSelect .role-card').forEach(c=>{
+    c.addEventListener('click', ()=> chooseTrack(c.dataset.track));
+  });
+  document.getElementById('codeSubmitBtn').addEventListener('click', submitCode);
+  document.getElementById('codeInput').addEventListener('keydown', e=>{ if(e.key==='Enter') submitCode(); });
+  document.getElementById('switchRoleBtn').addEventListener('click', ()=>{
+    sessionStorage.removeItem(ROLE_KEY); sessionStorage.removeItem(TRACK_KEY); sessionStorage.removeItem(CODE_KEY);
+    location.reload();
+  });
+  document.getElementById('jumpFab').addEventListener('click', ()=>{
+    autoFollow=true; const af=document.getElementById('autoFollowToggle'); if(af) af.checked=true; scrollToStep(currentIndex);
+  });
+
+  if(role==='presenter'){
+    if(!track){ showScreen('trackSelect'); return; }
+    if(!presenterCode){ showScreen('codePrompt'); return; }
+    enterPresenter();
+  } else if(role==='participant'){
+    enterParticipant();
+  }
+}
+function showScreen(id){
+  ['roleSelect','trackSelect','codePrompt','presenterView','participantView'].forEach(s=>{
+    document.getElementById(s).classList.toggle('hidden', s!==id);
+  });
+}
+function chooseRole(r){
+  role=r; sessionStorage.setItem(ROLE_KEY, r);
+  if(r==='presenter'){
+    if(!track){ showScreen('trackSelect'); return; }
+    if(!presenterCode){ showScreen('codePrompt'); return; }
+    enterPresenter();
+  } else { enterParticipant(); }
+}
+function chooseTrack(t){
+  track=t; sessionStorage.setItem(TRACK_KEY, t);
+  if(!presenterCode){ showScreen('codePrompt'); return; }
+  enterPresenter();
+}
+async function submitCode(){
+  const input = document.getElementById('codeInput');
+  const code = input.value.trim();
+  const errEl = document.getElementById('codeError');
+  errEl.classList.add('hidden');
+  if(!code) return;
+  try{
+    await callServer('setState', code, 0, track); // validates code as a side effect
+    presenterCode = code;
+    sessionStorage.setItem(CODE_KEY, code);
+    enterPresenter();
+  }catch(e){
+    errEl.textContent = (e && e.message) || '合言葉が違います。もう一度お試しください。';
+    errEl.classList.remove('hidden');
+  }
+}
+
+/* ---------------- presenter ---------------- */
+function enterPresenter(){
+  showScreen('presenterView');
+  setRolePill(); renderRuler(); buildPresenterDOM();
+  pollTallies();
+  pollTimer = setInterval(pollTallies, POLL_MS);
+}
+async function pollTallies(){
+  try{
+    const data = await callServer('getTallies');
+    renderTallies(data);
+  }catch(e){ /* transient network hiccup; ignore */ }
+}
+function setPage(i){
+  currentIndex = Math.max(0, Math.min(TOTAL_STEPS-1, i));
+  refreshPresenterNav(); updateRulerHighlight();
+  callServer('setState', presenterCode, currentIndex, track).catch(()=>{
+    showBanner('ページ送りを送信できませんでした。通信状況をご確認ください。', true);
+  });
+}
+function buildPresenterDOM(){
+  RESOLVED = PAGES.map(p=>resolvePage(p, track));
+  const view=document.getElementById('presenterView');
+  view.innerHTML = `
+    <div class="presenter-head">
+      <div>
+        <div style="font-size:12px;color:var(--ink-soft);">現在表示中　・　${track==='migration'?'一般法人・移行法人セミナー':'公益法人セミナー'}</div>
+        <div class="current-big" id="presCurrentLabel">-</div>
+      </div>
+      <div class="nav-btns">
+        <button class="nav-btn" id="prevBtn">← 前へ</button>
+        <button class="nav-btn primary" id="nextBtn">次へ →</button>
+      </div>
+    </div>
+    <div class="stat-row" style="margin-bottom:14px;">
+      <span class="stat"><span class="n mono" id="participantCount">0</span><span class="l">参加者数（延べ）</span></span>
+      <button class="nav-btn" id="exportBtn" style="align-self:center;">特典資料を作成</button>
+    </div>
+    <div class="deck" id="presDeck"></div>
+  `;
+  document.getElementById('prevBtn').addEventListener('click', ()=> setPage(currentIndex-1));
+  document.getElementById('nextBtn').addEventListener('click', ()=> setPage(currentIndex+1));
+  document.getElementById('exportBtn').addEventListener('click', openExport);
+
+  const deck=document.getElementById('presDeck');
+  RESOLVED.forEach((p,i)=>{
+    const card=el(`
+      <div class="page-card" data-step="${i}">
+        <div class="folio mono">${esc(p.no)}</div>
+        <div class="page-body">
+          <div class="page-head"><h3>${esc(p.theme)}</h3></div>
+          <p class="page-note">${esc(p.question)}</p>
+          ${p.type==='choice' ? `<div class="tallies"></div>` : ``}
+          <div class="stat-row"><span class="stat"><span class="n mono" data-count>0</span><span class="l">回答数</span></span></div>
+          <div class="instructor-box">
+            <label class="small">参加者からの${p.type==='text' ? '回答' : '質問・コメント'}（クリックして個別に返信できます）</label>
+            <div class="qa-list" data-qa-list><span class="qa-empty">まだありません</span></div>
+          </div>
+        </div>
+      </div>`);
+    deck.appendChild(card);
+    if(p.type==='choice'){
+      const box=card.querySelector('.tallies');
+      tallyRefs[p.id]={ bars: p.choices.map((c)=>{
+        const row=el(`<div class="tally-row"><span class="tally-label">${esc(c)}</span><div class="tally-track"><div class="tally-fill"></div></div><span class="tally-count mono">0</span></div>`);
+        box.appendChild(row);
+        return { fill:row.querySelector('.tally-fill'), count:row.querySelector('.tally-count') };
+      }), countEl: card.querySelector('[data-count]'), qaList: card.querySelector('[data-qa-list]') };
+    } else {
+      tallyRefs[p.id]={ countEl: card.querySelector('[data-count]'), qaList: card.querySelector('[data-qa-list]') };
+    }
+  });
+
+  const surveyCard=el(`
+    <div class="page-card survey-card" data-step="${SURVEY_INDEX}">
+      <div class="folio mono">特典</div>
+      <div class="page-body">
+        <div class="page-head"><h3>アンケート集計</h3></div>
+        <div class="stat-row">
+          <span class="stat"><span class="n mono" id="surveySubmitCount">0</span><span class="l">送信済み</span></span>
+          <span class="stat"><span class="n mono" id="surveyAvg">-</span><span class="l">満足度 平均</span></span>
+        </div>
+        <label class="small">良かった点</label>
+        <div class="qa-list" id="goodFeed"><span class="qa-empty">まだありません</span></div>
+        <label class="small">今後聞きたいテーマ</label>
+        <div class="qa-list" id="topicsFeed"><span class="qa-empty">まだありません</span></div>
+      </div>
+    </div>`);
+  deck.appendChild(surveyCard);
+  refreshPresenterNav();
+}
+function refreshPresenterNav(){
+  document.getElementById('presCurrentLabel').textContent = stepLabel(currentIndex);
+  document.getElementById('prevBtn').disabled = currentIndex<=0;
+  document.getElementById('nextBtn').disabled = currentIndex>=TOTAL_STEPS-1;
+  document.querySelectorAll('#presDeck .page-card').forEach(c=>{
+    c.classList.toggle('current', Number(c.dataset.step)===currentIndex);
+  });
+}
+function renderTallies(data){
+  document.getElementById('participantCount').textContent = data.participantCount || 0;
+  RESOLVED.forEach(p=>{
+    const ref=tallyRefs[p.id];
+    const items = (data.byPage[p.id] && data.byPage[p.id].items) || [];
+    const answeredItems = items.filter(it => it.answer!==undefined && it.answer!==null && it.answer!=='');
+    ref.countEl.textContent = answeredItems.length;
+    if(p.type==='choice'){
+      p.choices.forEach((c,ci)=>{
+        const n = answeredItems.filter(it=>Number(it.answer)===ci).length;
+        const pct = answeredItems.length ? Math.round(n/answeredItems.length*100) : 0;
+        ref.bars[ci].fill.style.width = pct+'%';
+        ref.bars[ci].count.textContent = n;
+      });
+    }
+    const qaItems = items
+      .map(it => ({ pid: it.pid, label: it.label, text: (p.type==='text' ? it.answer : it.question), reply: it.reply }))
+      .filter(it => it.text);
+    renderQaList(ref.qaList, p.id, qaItems);
+  });
+  const submitted = data.submitted || [];
+  document.getElementById('surveySubmitCount').textContent = submitted.length;
+  const sats = submitted.map(r=>r.satisfaction).filter(v=>v!=='' && v!==null && v!==undefined).map(Number);
+  document.getElementById('surveyAvg').textContent = sats.length ? (sats.reduce((a,b)=>a+b,0)/sats.length).toFixed(1) : '-';
+  const goods = submitted.map(r=>r.good).filter(Boolean);
+  const goodFeed = document.getElementById('goodFeed');
+  goodFeed.innerHTML = goods.length ? goods.slice(-30).reverse().map(g=>`<div class="qa-item"><div class="qa-text">${esc(g)}</div></div>`).join('') : '<span class="qa-empty">まだありません</span>';
+  const topics = submitted.map(r=>r.topics).filter(Boolean);
+  const topicsFeed = document.getElementById('topicsFeed');
+  topicsFeed.innerHTML = topics.length ? topics.slice(-30).reverse().map(g=>`<div class="qa-item"><div class="qa-text">${esc(g)}</div></div>`).join('') : '<span class="qa-empty">まだありません</span>';
+}
+
+/* Incrementally render per-question reply cards without wiping out in-progress typing. */
+function renderQaList(container, pageId, items){
+  if(!container._renderedPids) container._renderedPids = new Set();
+  const newItems = items.filter(it => !container._renderedPids.has(it.pid));
+  if(container._renderedPids.size === 0 && newItems.length === 0) return; // still empty, leave the placeholder
+  if(newItems.length === 0) return;
+  const emptyMsg = container.querySelector('.qa-empty');
+  if(emptyMsg) emptyMsg.remove();
+  newItems.forEach(it=>{
+    container._renderedPids.add(it.pid);
+    container.appendChild(buildQaItem(pageId, it));
+  });
+}
+function buildQaItem(pageId, it){
+  const node = el(`
+    <div class="qa-item" data-pid="${esc(it.pid)}">
+      <div class="qa-label">${esc(it.label)}</div>
+      <div class="qa-text">${esc(it.text)}</div>
+      <textarea placeholder="この人への返信を入力…">${esc(it.reply||'')}</textarea>
+      <div class="row-end" style="justify-content:space-between;align-items:center;">
+        <span class="save-status"></span>
+        <button type="button" class="submit-btn small-submit">返信する</button>
+      </div>
+    </div>`);
+  node.dataset.lastSaved = it.reply || '';
+  const ta = node.querySelector('textarea');
+  const statusEl = node.querySelector('.save-status');
+  const btn = node.querySelector('.submit-btn');
+  if(it.reply){ statusEl.textContent='返信済み・参加者に表示中'; statusEl.className='save-status saved'; }
+  btn.addEventListener('click', async ()=>{
+    btn.disabled = true;
+    statusEl.textContent='送信中…'; statusEl.className='save-status';
+    try{
+      await callServer('setInstructorAnswer', presenterCode, it.pid, pageId, ta.value);
+      node.dataset.lastSaved = ta.value;
+      statusEl.textContent='返信済み・参加者に表示中'; statusEl.className='save-status saved';
+    }catch(e){
+      statusEl.textContent='送信できませんでした。もう一度お試しください'; statusEl.className='save-status error';
+    }finally{
+      btn.disabled = false;
+    }
+  });
+  return node;
+}
+
+function openExport(){
+  const overlay = el(`
+    <div class="export-overlay" id="exportOverlay">
+      <div class="export-top">
+        <h2>アンケート協力特典資料（プレビュー）</h2>
+        <div style="display:flex;gap:8px;">
+          <button class="nav-btn" id="exportPrintBtn">印刷 / PDF保存</button>
+          <button class="linklike" id="exportCloseBtn">✕ 閉じる</button>
+        </div>
+      </div>
+      <div class="export-body" id="exportBody"></div>
+    </div>`);
+  document.body.appendChild(overlay);
+  const body = overlay.querySelector('#exportBody');
+  let html = '<p style="color:var(--ink-soft);">本日のセミナーでいただいたご質問と、回答をまとめました（匿名）。</p>';
+  let any = false;
+  RESOLVED.forEach(p=>{
+    const ref = tallyRefs[p.id];
+    if(!ref || !ref.qaList) return;
+    const items = [...ref.qaList.children].filter(n=>n.classList && n.classList.contains('qa-item'));
+    const answered = items
+      .map(n=>({ text:n.querySelector('.qa-text').textContent, reply:n.dataset.lastSaved||'' }))
+      .filter(it=>it.reply && it.reply.trim());
+    if(!answered.length) return;
+    any = true;
+    html += `<h2>${esc(p.theme)}（${esc(p.no)}）</h2>`;
+    answered.forEach(it=>{
+      html += `<div class="export-qa"><div class="q">Q. ${esc(it.text)}</div><div class="a">A. ${esc(it.reply)}</div></div>`;
+    });
+  });
+  if(!any) html += '<p style="color:var(--ink-faint);">まだ返信済みの質問がありません。</p>';
+  body.innerHTML = html;
+  overlay.querySelector('#exportCloseBtn').addEventListener('click', ()=> overlay.remove());
+  overlay.querySelector('#exportPrintBtn').addEventListener('click', ()=> window.print());
+}
+
+/* ---------------- participant ---------------- */
+async function enterParticipant(){
+  showScreen('participantView');
+  setRolePill(); renderRuler();
+  try{
+    const mine = await callServer('getMyAnswers', pid);
+    myResponse.answers = mine.answers || {};
+    myResponse.questions = mine.questions || {};
+    myResponse.questionAnswers = mine.questionAnswers || {};
+    if(mine.survey) myResponse.survey = mine.survey;
+  }catch(e){ showBanner('前回の回答を取得できませんでした（新規参加として続けます）。', true); }
+
+  buildParticipantDOM();
+  applyReplies();
+  pollParticipant();
+  pollTimer = setInterval(pollParticipant, POLL_MS);
+
+  window.addEventListener('scroll', ()=>{
+    document.getElementById('jumpFab').classList.toggle('hidden', autoFollow);
+  }, {passive:true});
+}
+async function pollParticipant(){
+  try{
+    const state = await callServer('getPublicState');
+    if(state && typeof state.page === 'number'){
+      currentIndex = state.page;
+      if(state.track && state.track !== track){ track = state.track; refreshTrackDependentCards(); }
+      updateRulerHighlight(); updateCurrentFlags();
+      if(autoFollow) scrollToStep(currentIndex);
+    }
+  }catch(e){ /* ignore transient errors */ }
+  try{
+    const mine = await callServer('getMyAnswers', pid);
+    myResponse.questionAnswers = mine.questionAnswers || {};
+    applyReplies();
+  }catch(e){ /* ignore */ }
+}
+function applyReplies(){
+  Object.keys(cardRefs).forEach(id=>{
+    const ref = cardRefs[id];
+    const text = myResponse.questionAnswers[id];
+    if(!text) return;
+    if(ref.replyBox && ref.replyTextEl){ ref.replyTextEl.textContent = text; ref.replyBox.classList.remove('hidden'); }
+    if(ref.extraReplyBox && ref.extraReplyTextEl){ ref.extraReplyTextEl.textContent = text; ref.extraReplyBox.classList.remove('hidden'); }
+  });
+}
+function updateCurrentFlags(){
+  Object.keys(cardRefs).forEach(id=>{
+    const idx = id==='survey' ? SURVEY_INDEX : PAGES.findIndex(p=>p.id===id);
+    cardRefs[id].el.classList.toggle('current', idx===currentIndex);
+    const flag=cardRefs[id].flagEl;
+    if(flag) flag.textContent = idx===currentIndex ? '● 今ここです' : '';
+  });
+}
+function scrollToStep(i){
+  const id = i===SURVEY_INDEX ? 'survey' : PAGES[i].id;
+  const ref=cardRefs[id];
+  if(ref) ref.el.scrollIntoView({behavior:'smooth', block:'center'});
+}
+function buildParticipantDOM(){
+  const view=document.getElementById('participantView');
+  view.innerHTML = `
+    <div class="toggle-row">
+      <label class="switch"><input type="checkbox" id="autoFollowToggle" checked><span class="slider"></span></label>
+      登壇の進行に合わせて自動的に画面を移動する
+    </div>
+    <div class="deck" id="partDeck"></div>
+  `;
+  document.getElementById('autoFollowToggle').addEventListener('change', e=>{ autoFollow=e.target.checked; if(autoFollow) scrollToStep(currentIndex); });
+
+  RESOLVED_P = PAGES.map(p=>resolvePage(p, track));
+  const deck=document.getElementById('partDeck');
+  RESOLVED_P.forEach(p=>{
+    const card=el(`
+      <div class="page-card" data-id="${p.id}">
+        <div class="folio mono">${esc(p.no)}</div>
+        <div class="page-body">
+          <div class="page-head"><h3>${esc(p.theme)}</h3><span class="current-flag"></span></div>
+          <p class="page-note">${esc(p.note)}</p>
+          <p class="question">${esc(p.question)}</p>
+          <div class="answer-area"></div>
+          <div class="row-end" style="justify-content:space-between;align-items:center;"><span class="save-status"></span></div>
+        </div>
+      </div>`);
+    deck.appendChild(card);
+    const area=card.querySelector('.answer-area');
+    const statusEl=card.querySelector('.save-status');
+    const rowEnd=card.querySelector('.row-end');
+    let choicesWrap=null;
+    let submitBtn=null;
+    let replyBox=null, replyTextEl=null, extraReplyBox=null, extraReplyTextEl=null;
+    if(p.type==='choice'){
+      choicesWrap=el('<div class="choices"></div>');
+      p.choices.forEach((c,ci)=>{
+        const b=el(`<button type="button" class="choice-btn">${esc(c)}</button>`);
+        if(Number(myResponse.answers[p.id])===ci) b.classList.add('selected');
+        b.addEventListener('click', async ()=>{
+          myResponse.answers[p.id]=ci;
+          choicesWrap.querySelectorAll('.choice-btn').forEach((x,xi)=>x.classList.toggle('selected', xi===ci));
+          statusEl.textContent='送信中…'; statusEl.className='save-status';
+          try{
+            await callServer('submitAnswer', pid, p.id, 'answer', ci);
+            statusEl.textContent='送信しました'; statusEl.className='save-status saved';
+          }catch(e){
+            statusEl.textContent='送信できませんでした。もう一度お試しください'; statusEl.className='save-status error';
+          }
+        });
+        choicesWrap.appendChild(b);
+      });
+      area.appendChild(choicesWrap);
+      const extraRefs = wireExtraQuestion(area, p.id);
+      extraReplyBox = extraRefs.replyBox; extraReplyTextEl = extraRefs.replyTextEl;
+      submitBtn = el('<button type="button" class="submit-btn small-submit">回答を送信する</button>');
+      rowEnd.appendChild(submitBtn);
+      wireSubmitButton(submitBtn, statusEl, ()=>myResponse.answers[p.id], p.id);
+    } else {
+      const ta=el(`<textarea placeholder="ここに入力してください"></textarea>`);
+      ta.value = myResponse.answers[p.id] || '';
+      ta.addEventListener('input', ()=>{ myResponse.answers[p.id]=ta.value; statusEl.textContent='未送信（変更あり）'; statusEl.className='save-status pending'; });
+      area.appendChild(ta);
+      replyBox = el('<div class="instructor-answer hidden"><label class="small">講師からの回答</label><p class="instructor-answer-text"></p></div>');
+      area.appendChild(replyBox);
+      replyTextEl = replyBox.querySelector('.instructor-answer-text');
+      submitBtn = el('<button type="button" class="submit-btn small-submit">回答を送信する</button>');
+      rowEnd.appendChild(submitBtn);
+      wireSubmitButton(submitBtn, statusEl, ()=>myResponse.answers[p.id], p.id);
+    }
+    if(myResponse.answers[p.id]!==undefined && myResponse.answers[p.id]!==null && myResponse.answers[p.id]!==''){
+      statusEl.textContent='送信済み'; statusEl.className='save-status saved';
+    }
+    cardRefs[p.id] = {
+      el:card, flagEl:card.querySelector('.current-flag'), statusEl,
+      noteEl:card.querySelector('.page-note'), questionEl:card.querySelector('.question'), choicesWrap,
+      replyBox, replyTextEl, extraReplyBox, extraReplyTextEl
+    };
+  });
+
+  buildSurveyCard(deck);
+  updateCurrentFlags();
+}
+function refreshTrackDependentCards(){
+  RESOLVED_P = PAGES.map(p=>resolvePage(p, track));
+  PAGES.forEach((p,i)=>{
+    if(!p.variants) return;
+    const resolved = RESOLVED_P[i];
+    const ref = cardRefs[p.id];
+    if(!ref) return;
+    ref.noteEl.textContent = resolved.note;
+    ref.questionEl.textContent = resolved.question;
+    if(resolved.type==='choice' && ref.choicesWrap){
+      ref.choicesWrap.innerHTML = '';
+      resolved.choices.forEach((c,ci)=>{
+        const b=el(`<button type="button" class="choice-btn">${esc(c)}</button>`);
+        if(Number(myResponse.answers[p.id])===ci) b.classList.add('selected');
+        b.addEventListener('click', async ()=>{
+          myResponse.answers[p.id]=ci;
+          ref.choicesWrap.querySelectorAll('.choice-btn').forEach((x,xi)=>x.classList.toggle('selected', xi===ci));
+          ref.statusEl.textContent='送信中…'; ref.statusEl.className='save-status';
+          try{
+            await callServer('submitAnswer', pid, p.id, 'answer', ci);
+            ref.statusEl.textContent='送信しました'; ref.statusEl.className='save-status saved';
+          }catch(e){
+            ref.statusEl.textContent='送信できませんでした。もう一度お試しください'; ref.statusEl.className='save-status error';
+          }
+        });
+        ref.choicesWrap.appendChild(b);
+      });
+    }
+  });
+}
+function wireSubmitButton(btn, statusEl, getValue, pageId){
+  btn.addEventListener('click', async ()=>{
+    btn.disabled = true;
+    statusEl.textContent='送信中…'; statusEl.className='save-status';
+    try{
+      await callServer('submitAnswer', pid, pageId, 'answer', getValue());
+      statusEl.textContent='送信しました'; statusEl.className='save-status saved';
+    }catch(e){
+      statusEl.textContent='送信できませんでした。もう一度お試しください'; statusEl.className='save-status error';
+    }finally{
+      btn.disabled = false;
+    }
+  });
+}
+function wireExtraQuestion(area, pageId){
+  const wrap = el(`
+    <div class="extra-question">
+      <button type="button" class="linklike extra-question-toggle">＋ ご質問・わからないことを書く</button>
+      <div class="extra-question-body hidden">
+        <textarea placeholder="ここに質問を入力してください"></textarea>
+        <div class="row-end" style="justify-content:space-between;align-items:center;">
+          <span class="save-status"></span>
+          <button type="button" class="submit-btn small-submit">質問を送信する</button>
+        </div>
+        <div class="instructor-answer hidden">
+          <label class="small">講師からの回答</label>
+          <p class="instructor-answer-text"></p>
+        </div>
+      </div>
+    </div>`);
+  area.appendChild(wrap);
+  const toggle = wrap.querySelector('.extra-question-toggle');
+  const body = wrap.querySelector('.extra-question-body');
+  const ta = wrap.querySelector('textarea');
+  const qStatus = wrap.querySelector('.save-status');
+  const qSubmit = wrap.querySelector('.submit-btn');
+  const replyBox = wrap.querySelector('.instructor-answer');
+  const replyTextEl = replyBox.querySelector('.instructor-answer-text');
+  const existing = myResponse.questions[pageId] || '';
+  ta.value = existing;
+  if(existing){ body.classList.remove('hidden'); toggle.textContent='ご質問・わからないこと'; qStatus.textContent='送信済み'; qStatus.className='save-status saved'; }
+  toggle.addEventListener('click', ()=>{ body.classList.toggle('hidden'); });
+  ta.addEventListener('input', ()=>{ myResponse.questions[pageId]=ta.value; qStatus.textContent='未送信（変更あり）'; qStatus.className='save-status pending'; });
+  qSubmit.addEventListener('click', async ()=>{
+    qSubmit.disabled = true;
+    qStatus.textContent='送信中…'; qStatus.className='save-status';
+    try{
+      await callServer('submitAnswer', pid, pageId, 'question', ta.value);
+      qStatus.textContent='送信しました'; qStatus.className='save-status saved';
+    }catch(e){
+      qStatus.textContent='送信できませんでした。もう一度お試しください'; qStatus.className='save-status error';
+    }finally{
+      qSubmit.disabled = false;
+    }
+  });
+  return { replyBox, replyTextEl };
+}
+function buildSurveyCard(deck){
+  const s = myResponse.survey || {};
+  const card=el(`
+    <div class="page-card survey-card" data-id="survey">
+      <div class="folio mono">特典</div>
+      <div class="page-body">
+        <div class="page-head"><h3>本日のアンケート</h3><span class="current-flag"></span></div>
+        <p class="page-note">セミナーは以上で終了です。最後にアンケートへのご協力をお願いします。</p>
+        <div class="incentive">ご記入いただいた方には、本日の各ページでいただいたご質問への回答をまとめて、入力されたメールアドレスへお送りします。</div>
+        <div><label class="small">本日の満足度</label><div class="stars" id="starRow"></div></div>
+        <div><label class="small">良かった点</label><textarea id="goodInput" placeholder="よかった内容があればご記入ください"></textarea></div>
+        <div><label class="small">今後聞きたいテーマ</label><textarea id="topicsInput" placeholder="次回取り上げてほしいテーマなど"></textarea></div>
+        <div class="field-grid">
+          <div><label class="small">お名前</label><input type="text" id="nameInput"></div>
+          <div><label class="small">法人名</label><input type="text" id="orgInput"></div>
+          <div><label class="small">メールアドレス（回答送付先・必須）</label><input type="email" id="emailInput"></div>
+        </div>
+        <div class="error-text hidden" id="surveyError">メールアドレスをご確認ください。</div>
+        <div class="row-end" style="justify-content:space-between;align-items:center;">
+          <span class="save-status"></span>
+          <button class="submit-btn" id="surveySubmit">送信する</button>
+        </div>
+        <div class="done-note hidden" id="surveyDone"><strong>ご回答ありがとうございました。</strong><br>本日の質問への回答は、追ってご入力いただいたメールアドレスへお送りします。</div>
+      </div>
+    </div>`);
+  deck.appendChild(card);
+  const statusEl = card.querySelector('.save-status');
+  const starRow=card.querySelector('#starRow');
+  let satisfaction = s.satisfaction ? Number(s.satisfaction) : null;
+  for(let n=1;n<=5;n++){
+    const b=el(`<button type="button" class="star-btn">${n}</button>`);
+    if(satisfaction===n) b.classList.add('selected');
+    b.addEventListener('click', ()=>{
+      satisfaction=n; myResponse.survey.satisfaction=n;
+      starRow.querySelectorAll('.star-btn').forEach((x,xi)=>x.classList.toggle('selected', xi+1===n));
+      statusEl.textContent='未送信（変更あり）'; statusEl.className='save-status pending';
+    });
+    starRow.appendChild(b);
+  }
+  const goodInput=card.querySelector('#goodInput'); goodInput.value=s.good||'';
+  goodInput.addEventListener('input', ()=>{ myResponse.survey.good=goodInput.value; statusEl.textContent='未送信（変更あり）'; statusEl.className='save-status pending'; });
+  const topicsInput=card.querySelector('#topicsInput'); topicsInput.value=s.topics||'';
+  topicsInput.addEventListener('input', ()=>{ myResponse.survey.topics=topicsInput.value; statusEl.textContent='未送信（変更あり）'; statusEl.className='save-status pending'; });
+  const nameInput=card.querySelector('#nameInput'); nameInput.value=s.name||'';
+  nameInput.addEventListener('input', ()=>{ myResponse.survey.name=nameInput.value; });
+  const orgInput=card.querySelector('#orgInput'); orgInput.value=s.org||'';
+  orgInput.addEventListener('input', ()=>{ myResponse.survey.org=orgInput.value; });
+  const emailInput=card.querySelector('#emailInput'); emailInput.value=s.email||'';
+  emailInput.addEventListener('input', ()=>{ myResponse.survey.email=emailInput.value; });
+
+  if(s.submittedAt){
+    card.querySelector('#surveyDone').classList.remove('hidden');
+    card.querySelector('#surveySubmit').disabled=true;
+    statusEl.textContent='送信済み'; statusEl.className='save-status saved';
+  }
+  card.querySelector('#surveySubmit').addEventListener('click', async ()=>{
+    const email=(myResponse.survey.email||'').trim();
+    const errEl=card.querySelector('#surveyError');
+    if(!email || email.indexOf('@')<0){ errEl.classList.remove('hidden'); return; }
+    errEl.classList.add('hidden');
+    const btn=card.querySelector('#surveySubmit');
+    btn.disabled=true;
+    statusEl.textContent='送信中…'; statusEl.className='save-status';
+    try{
+      await callServer('submitSurvey', pid, myResponse.survey);
+      statusEl.textContent='送信しました'; statusEl.className='save-status saved';
+      card.querySelector('#surveyDone').classList.remove('hidden');
+    }catch(e){
+      statusEl.textContent='送信できませんでした。もう一度お試しください'; statusEl.className='save-status error';
+      btn.disabled=false;
+    }
+  });
+  cardRefs['survey'] = { el:card, flagEl:card.querySelector('.current-flag'), statusEl };
+}
+
+boot();
+</script>
+</body>
+</html>

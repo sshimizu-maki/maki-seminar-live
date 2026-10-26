@@ -1,0 +1,13 @@
+{
+  "name": "maki-seminar-live",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Seminar live Q&A / survey tool for Maki Co., Ltd.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
